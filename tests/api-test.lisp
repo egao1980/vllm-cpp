@@ -3,30 +3,26 @@
 (deftest abi-pin
   (ok (= 23 vllm-cpp:+vllm-abi-version+)))
 
-(deftest-parametrize device-codes
-    ((kw code)
-     (:auto 0)
-     (:cpu 1)
-     (:cuda 2)
-     ("cuda" 2))
-  (ok (= code (vllm-cpp:device-code kw))))
+(deftest device-codes
+  (dolist (pair '((:auto 0) (:cpu 1) (:cuda 2) ("cuda" 2)))
+    (ok (= (second pair) (vllm-cpp:device-code (first pair))))))
 
 (deftest device-keyword-roundtrip
   (ok (eq :auto (vllm-cpp:device-keyword 0)))
   (ok (eq :cpu (vllm-cpp:device-keyword 1)))
   (ok (eq :cuda (vllm-cpp:device-keyword 2))))
 
-(deftest-parametrize default-device-matrix
-    ((os arch flavor version expected)
-     ("linux" "amd64" nil nil :cuda)
-     ("linux" "amd64" "cpu" nil :auto)
-     ("linux" "amd64" "cuda" nil :cuda)
-     ("linux" "arm64" nil nil :auto)
-     ("linux" "arm64" nil "0.1.0+cuda" :cuda)
-     ("darwin" "arm64" nil nil :auto)
-     ("darwin" "arm64" nil "0.1.0+cuda" :cuda)
-     ("windows" "amd64" nil nil :auto))
-  (ok (eq expected (vllm-cpp::%default-device-for os arch flavor version))))
+(deftest default-device-matrix
+  (dolist (row '(("linux" "amd64" nil nil :cuda)
+                 ("linux" "amd64" "cpu" nil :auto)
+                 ("linux" "amd64" "cuda" nil :cuda)
+                 ("linux" "arm64" nil nil :auto)
+                 ("linux" "arm64" nil "0.1.0+cuda" :cuda)
+                 ("darwin" "arm64" nil nil :auto)
+                 ("darwin" "arm64" nil "0.1.0+cuda" :cuda)
+                 ("windows" "amd64" nil nil :auto)))
+    (destructuring-bind (os arch flavor version expected) row
+      (ok (eq expected (vllm-cpp::%default-device-for os arch flavor version))))))
 
 (deftest default-device-env
   (let ((old-dev (or (uiop:getenv "VLLM_DEVICE") ""))
