@@ -1,0 +1,7 @@
+vllm-cpp (MIT) binds libvllm from mudler/vllm.cpp (Apache-2.0).
+
+include/vllm.h is the upstream C ABI header, vendored for grovel-free CFFI
+layout + local builds. Copyright 2026 Ettore Di Giacinto. License:
+https://github.com/mudler/vllm.cpp/blob/master/LICENSE
+
+See include/PROVENANCE.md.
