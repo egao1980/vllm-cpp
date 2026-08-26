@@ -2,7 +2,6 @@
 
 (defun device-code (device)
   (etypecase device
-    (null 0)
     ((eql :auto) 0)
     ((eql :cpu) 1)
     ((eql :cuda) 2)
@@ -14,6 +13,26 @@
     (0 :auto)
     (1 :cpu)
     (2 :cuda)))
+
+(defun %default-device-for (os arch flavor &optional version)
+  "linux/amd64 published overlay is CUDA. CPU flavor stays :auto.
+   Other hosts become :cuda only when libvllm reports +cuda."
+  (cond
+    ((equal flavor "cpu") :auto)
+    ((and (string-equal os "linux") (string-equal arch "amd64")) :cuda)
+    ((and version (search "+cuda" version :test #'char-equal)) :cuda)
+    (t :auto)))
+
+(defun default-device ()
+  "Device when :device / VLLM_DEVICE are omitted.
+   linux/amd64 → :cuda (the published overlay). CPU flavor and other hosts → :auto
+   unless the loaded libvllm version string has +cuda. Explicit :cuda never
+   falls back to CPU (ABI v14)."
+  (let ((env (%env "VLLM_DEVICE")))
+    (when env
+      (return-from default-device (intern (string-upcase env) :keyword))))
+  (%default-device-for (%host-os) (%host-arch) (%flavor)
+                       (and *vllm-loaded* (ignore-errors (%vllm-version)))))
 
 (defun %env (name)
   (let ((v (uiop:getenv name)))
@@ -40,13 +59,15 @@
 (defun %finalize-engine (engine)
   (ignore-errors (free-engine engine)))
 
-(defun load-engine (&key model-path (device :auto) tokenizer-config-path
+(defun load-engine (&key model-path device tokenizer-config-path
                       tool-parser reasoning-parser speculative-config
                       scheduling-policy max-model-len max-num-seqs
                       gpu-memory-utilization)
-  "Load a text engine. DEVICE is :auto / :cpu / :cuda (ABI v14)."
+  "Load a text engine. DEVICE is :auto / :cpu / :cuda (ABI v14).
+   Omitted DEVICE uses DEFAULT-DEVICE (CUDA on the published linux/amd64 overlay)."
   (ensure-vllm)
-  (let ((path (or model-path (%env "VLLM_MODEL_PATH") (%env "VLLM_CPP_MODEL"))))
+  (let ((path (or model-path (%env "VLLM_MODEL_PATH") (%env "VLLM_CPP_MODEL")))
+        (resolved (or device (default-device))))
     (unless (and path (plusp (length path)))
       (error 'vllm-missing-model
              :message "pass :model-path or set VLLM_MODEL_PATH"))
@@ -56,7 +77,7 @@
           (setf (mem-aref params :uint8 i) 0))
         (setf (foreign-slot-value params '(:struct vllm-model-params) 'model-path) c-path
               (foreign-slot-value params '(:struct vllm-model-params) 'device)
-              (device-code (or device (%env "VLLM_DEVICE") :auto)))
+              (device-code resolved))
         (when max-model-len
           (setf (foreign-slot-value params '(:struct vllm-model-params) 'max-model-len)
                 max-model-len))
@@ -94,7 +115,7 @@
                                           :pointer ptr
                                           :model-path path
                                           :device (device-keyword
-                                                   (device-code device)))))
+                                                   (device-code resolved)))))
               (tg:finalize engine (lambda () (%finalize-engine engine)))
               engine)))))))
 

@@ -111,11 +111,31 @@
   #+(and unix (not darwin)) '("libvllm.so" "libvllm.so.0")
   #-(or windows darwin unix) '("libvllm.so"))
 
-(defun %find-lib (dir)
-  (dolist (name (%lib-candidates))
+(defun %find-named (dir names)
+  (dolist (name names)
     (let ((p (merge-pathnames name (uiop:ensure-directory-pathname dir))))
       (when (probe-file p)
         (return (namestring (truename p)))))))
+
+(defun %find-lib (dir)
+  (%find-named dir (%lib-candidates)))
+
+(defun %cuda-runtime-names (which)
+  (ecase which
+    (:cudart '("libcudart.so.12" "libcudart.so.13" "libcudart.so"))
+    (:cublaslt '("libcublasLt.so.12" "libcublasLt.so.13" "libcublasLt.so"))
+    (:cublas '("libcublas.so.12" "libcublas.so.13" "libcublas.so"))))
+
+(defun %preload-cuda-runtime (dir)
+  "Absolute-preload CUDA user-mode deps before libvllm. Never libcuda (driver)."
+  #+(and unix (not darwin))
+  (dolist (which '(:cudart :cublaslt :cublas))
+    (let ((abs (%find-named dir (%cuda-runtime-names which))))
+      (when abs
+        (handler-case (load-foreign-library abs)
+          (error (e)
+            (warn "vllm-cpp: failed to preload ~a (~a)" abs e))))))
+  t)
 
 (defvar *vllm-loaded* nil)
 
@@ -129,6 +149,7 @@
           (unless preloaded
             (let ((abs (%find-lib dir)))
               (when abs
+                (%preload-cuda-runtime dir)
                 (load-foreign-library abs)
                 (setf preloaded t))))))
       (unless preloaded

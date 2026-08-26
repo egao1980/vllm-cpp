@@ -1,6 +1,6 @@
 (defsystem "vllm-cpp"
   :version "0.1.0"
-  :description "CFFI + native overlays for mudler/vllm.cpp (libvllm C ABI)"
+  :description "CFFI + native overlays for mudler/vllm.cpp (libvllm; linux/amd64 is CUDA)"
   :author "egao1980"
   :license "MIT"
   :depends-on ("cffi" "trivial-garbage")
@@ -18,19 +18,16 @@
     :overlays
     ((:platform (:os "linux" :arch "amd64")
       :layers ((:role "native-library"
-                :files (("lib/linux-amd64/libvllm.so" . "libvllm.so")))))
+                :files (("lib/linux-amd64/libvllm.so" . "libvllm.so")
+                        ("lib/linux-amd64/libcudart.so.12" . "libcudart.so.12")
+                        ("lib/linux-amd64/libcublas.so.12" . "libcublas.so.12")
+                        ("lib/linux-amd64/libcublasLt.so.12" . "libcublasLt.so.12")))))
      (:platform (:os "linux" :arch "arm64")
       :layers ((:role "native-library"
                 :files (("lib/linux-arm64/libvllm.so" . "libvllm.so")))))
-     (:platform (:os "linux" :arch "amd64" :release "cuda")
-      :layers ((:role "native-library"
-                :files (("lib/linux-amd64-cuda/libvllm.so" . "libvllm.so")))))
      (:platform (:os "darwin" :arch "arm64")
       :layers ((:role "native-library"
                 :files (("lib/darwin-arm64/libvllm.dylib" . "libvllm.dylib")))))
-     (:platform (:os "darwin" :arch "arm64" :release "mlx")
-      :layers ((:role "native-library"
-                :files (("lib/darwin-arm64-mlx/libvllm.dylib" . "libvllm.dylib")))))
      (:platform (:os "windows" :arch "amd64")
       :layers ((:role "native-library"
                 :files (("lib/windows-amd64/vllm.dll" . "vllm.dll")))))))))

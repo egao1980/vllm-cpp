@@ -1,5 +1,5 @@
-# CPU (default) + optional CUDA / MLX flavors. CUDA needs a toolkit runner;
-# MLX needs MLX_ROOT on the macOS runner. First publish is CPU/Metal.
+# linux/amd64 overlay IS the CUDA build (packager keys os-arch only).
+# Compile in nvidia/cuda devel — no GPU required. Runtime needs a driver.
 name: Publish OCI Package
 
 on:
@@ -11,11 +11,6 @@ on:
         description: "OCI tag (empty → .asd :version)"
         required: false
         default: ""
-      flavor:
-        description: "cpu (default matrix) | cuda | mlx"
-        required: false
-        default: "cpu"
-        type: string
       registry:
         description: "OCI registry"
         required: false
@@ -23,36 +18,66 @@ on:
 
 env:
   PACKAGE_VERSION_DEFAULT: "0.1.0"
-  SBCL_VERSION: 2.6.7
-  ROSWELL_VERSION: "26.02.116"
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: linux
-            arch: amd64
-            runner: ubuntu-latest
-            flavor: cpu
-          - os: linux
-            arch: arm64
-            runner: ubuntu-24.04-arm
-            flavor: cpu
-          - os: darwin
-            arch: arm64
-            runner: macos-latest
-            flavor: cpu
-    runs-on: ${{ matrix.runner }}
-    if: ${{ inputs.flavor == 'cpu' || inputs.flavor == '' || github.event_name == 'push' }}
+  build-cuda-linux-amd64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu24.04
     permissions:
       contents: read
       packages: read
     steps:
       - uses: actions/checkout@v5
-      - uses: egao1980/cl-repository/.github/actions/setup-client@main
+      - name: Build deps
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential cmake git ninja-build patchelf ca-certificates curl
+      - name: Build libvllm (CUDA)
+        env:
+          VLLM_CPP_FLAVOR: cuda
+          VLLM_CPP_CUDA_ARCHITECTURES: "80;86;89;90a"
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          chmod +x scripts/build-vllm.sh scripts/stage-cuda-runtime.sh
+          ./scripts/build-vllm.sh
+          mkdir -p native-bundle
+          cp -a lib/linux-amd64/. native-bundle/
+          test -e native-bundle/libvllm.so
+          test -e native-bundle/libcudart.so.12
+          test -e native-bundle/libcublasLt.so.12
+          test -e native-bundle/libcublas.so.12
+          if ls native-bundle/libcuda.so* >/dev/null 2>&1; then
+            echo "refusing to publish libcuda (driver)" >&2
+            exit 1
+          fi
+          ls -la native-bundle
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-linux-amd64
+          path: native-bundle/
+
+  build-cpu:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v5
       - name: Install build deps (Linux)
         if: matrix.os == 'linux'
         run: |
@@ -61,9 +86,9 @@ jobs:
       - name: Install build deps (macOS)
         if: matrix.os == 'darwin'
         run: brew install cmake ninja || true
-      - name: Build libvllm
+      - name: Build libvllm (CPU / Metal)
         env:
-          VLLM_CPP_FLAVOR: ${{ matrix.flavor }}
+          VLLM_CPP_FLAVOR: cpu
         run: |
           chmod +x scripts/build-vllm.sh
           ./scripts/build-vllm.sh
@@ -90,7 +115,7 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
   publish:
-    needs: [build, resolve-version]
+    needs: [build-cuda-linux-amd64, build-cpu, resolve-version]
     permissions:
       contents: read
       packages: write

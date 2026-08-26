@@ -18,6 +18,7 @@
 
            #:device-code
            #:device-keyword
+           #:default-device
 
            #:vllm-engine
            #:vllm-engine-p

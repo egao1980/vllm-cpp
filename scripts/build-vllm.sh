@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Build mudler/vllm.cpp shared lib into lib/<os>-<arch>[-flavor]/.
-# Env: VLLM_CPP_REF (default master), VLLM_CPP_FLAVOR=cpu|cuda|mlx,
-#      VLLM_CPP_CUDA_ARCHITECTURES, MLX_ROOT, DEST_DIR, JOBS
+# Build mudler/vllm.cpp shared lib into lib/<os>-<arch>/.
+# Linux default is CUDA (the published linux/amd64 overlay). CPU is
+# VLLM_CPP_FLAVOR=cpu for local no-GPU boxes only — OCI linux/amd64 is CUDA.
+# Env: VLLM_CPP_REF, VLLM_CPP_FLAVOR=cuda|cpu|mlx,
+#      VLLM_CPP_CUDA_ARCHITECTURES (default 80;86;89;90a), MLX_ROOT, DEST_DIR, JOBS
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REF="${VLLM_CPP_REF:-master}"
-FLAVOR="${VLLM_CPP_FLAVOR:-cpu}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 SRC_URL="https://github.com/mudler/vllm.cpp.git"
 
@@ -23,19 +24,33 @@ case "$uname_m" in
   *) echo "unsupported arch: $uname_m" >&2; exit 1 ;;
 esac
 
+if [[ -z "${VLLM_CPP_FLAVOR:-}" ]]; then
+  if [[ "$os" == "linux" ]]; then
+    FLAVOR=cuda
+  else
+    FLAVOR=cpu
+  fi
+else
+  FLAVOR="$VLLM_CPP_FLAVOR"
+fi
+
 case "$FLAVOR" in
   cpu|cuda|mlx) ;;
-  *) echo "VLLM_CPP_FLAVOR must be cpu|cuda|mlx (got: $FLAVOR)" >&2; exit 1 ;;
+  *) echo "VLLM_CPP_FLAVOR must be cuda|cpu|mlx (got: $FLAVOR)" >&2; exit 1 ;;
 esac
 
-if [[ "$FLAVOR" == "cpu" ]]; then
-  suffix=""
+# Published overlay path is lib/<os>-<arch>/. Extra local flavors get a suffix
+# so they cannot clobber the OCI layout (arrange-native-artifacts is os-arch only).
+if [[ "$FLAVOR" == "cpu" && "$os" == "linux" ]]; then
+  suffix="-cpu"
+elif [[ "$FLAVOR" == "mlx" ]]; then
+  suffix="-mlx"
 else
-  suffix="-${FLAVOR}"
+  suffix=""
 fi
 OUT="${DEST_DIR:-$ROOT/lib/${os}-${arch}${suffix}}"
 SRC="$ROOT/build/vllm.cpp"
-BUILD="$ROOT/build/${os}-${arch}${suffix}"
+BUILD="$ROOT/build/${os}-${arch}-${FLAVOR}"
 
 mkdir -p "$ROOT/build"
 if [[ -d "$SRC/.git" ]]; then
@@ -63,10 +78,18 @@ case "$FLAVOR" in
     fi
     ;;
   cuda)
-    cmake_args+=(-DVLLM_CPP_CUDA=ON -DVLLM_CPP_CUTLASS_FETCH=ON)
-    if [[ -n "${VLLM_CPP_CUDA_ARCHITECTURES:-}" ]]; then
-      cmake_args+=(-DVLLM_CPP_CUDA_ARCHITECTURES="${VLLM_CPP_CUDA_ARCHITECTURES}")
+    if ! command -v nvcc >/dev/null 2>&1; then
+      echo "CUDA flavor requires nvcc on PATH (nvidia/cuda:*-devel or a local toolkit)." >&2
+      exit 1
     fi
+    archs="${VLLM_CPP_CUDA_ARCHITECTURES:-80;86;89;90a}"
+    cmake_args+=(
+      -DVLLM_CPP_CUDA=ON
+      -DVLLM_CPP_CUTLASS_FETCH=ON
+      -DVLLM_CPP_CUDA_ARCHITECTURES="${archs}"
+      -DCMAKE_CUDA_RUNTIME_LIBRARY=Shared
+    )
+    echo "==> nvcc $(nvcc --version | tail -1) archs=${archs}"
     ;;
   mlx)
     if [[ "$os" != "darwin" ]]; then
@@ -88,23 +111,24 @@ cmake --build "$BUILD" -j"$JOBS"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 shopt -s nullglob
-libs=(
-  "$BUILD"/libvllm.so*
-  "$BUILD"/libvllm*.dylib
-  "$BUILD"/lib/libvllm.so*
-  "$BUILD"/lib/libvllm*.dylib
-  "$BUILD"/src/libvllm.so*
-  "$BUILD"/src/libvllm*.dylib
-)
-# cmake sometimes lands the shared lib next to the target.
+libs=()
 while IFS= read -r -d '' f; do
   libs+=("$f")
-done < <(find "$BUILD" -name 'libvllm.so*' -o -name 'libvllm*.dylib' -print0 2>/dev/null || true)
-
+done < <(find "$BUILD" \( -name 'libvllm.so*' -o -name 'libvllm*.dylib' \) -print0 2>/dev/null || true)
 if ((${#libs[@]} == 0)); then
   echo "libvllm shared library not found under $BUILD" >&2
   find "$BUILD" -name '*vllm*' | head -50 >&2 || true
   exit 1
 fi
 cp -a "${libs[@]}" "$OUT/"
+if [[ "$os" == "linux" && ! -e "$OUT/libvllm.so" ]]; then
+  first="$(ls -1 "$OUT"/libvllm.so* | head -1)"
+  ln -sfn "$(basename "$first")" "$OUT/libvllm.so"
+fi
+
+if [[ "$FLAVOR" == "cuda" ]]; then
+  chmod +x "$ROOT/scripts/stage-cuda-runtime.sh"
+  "$ROOT/scripts/stage-cuda-runtime.sh" "$OUT"
+fi
+
 echo "staged:" && ls -la "$OUT"
