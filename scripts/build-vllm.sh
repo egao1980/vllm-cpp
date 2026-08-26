@@ -16,6 +16,16 @@ uname_m="$(uname -m)"
 case "$uname_s" in
   Linux) os=linux ;;
   Darwin) os=darwin ;;
+  MINGW*|MSYS*|CYGWIN*|Windows_NT)
+    if command -v pwsh >/dev/null 2>&1; then
+      exec pwsh -File "$ROOT/scripts/build-vllm.ps1"
+    fi
+    if command -v powershell >/dev/null 2>&1; then
+      exec powershell -File "$ROOT/scripts/build-vllm.ps1"
+    fi
+    echo "Windows build needs pwsh (scripts/build-vllm.ps1)" >&2
+    exit 1
+    ;;
   *) echo "unsupported OS: $uname_s" >&2; exit 1 ;;
 esac
 case "$uname_m" in
@@ -114,7 +124,7 @@ shopt -s nullglob
 libs=()
 while IFS= read -r -d '' f; do
   libs+=("$f")
-done < <(find "$BUILD" \( -name 'libvllm.so*' -o -name 'libvllm*.dylib' \) -print0 2>/dev/null || true)
+done < <(find "$BUILD" \( -name 'libvllm.so*' -o -name 'libvllm*.dylib' -o -name 'vllm.dll' -o -name 'libvllm.dll' \) -print0 2>/dev/null || true)
 if ((${#libs[@]} == 0)); then
   echo "libvllm shared library not found under $BUILD" >&2
   find "$BUILD" -name '*vllm*' | head -50 >&2 || true

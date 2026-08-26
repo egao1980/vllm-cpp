@@ -99,6 +99,32 @@ jobs:
           name: native-${{ matrix.os }}-${{ matrix.arch }}
           path: native-bundle/
 
+  # CPU / MSVC /MT. CUDA Windows is not an upstream release target.
+  build-cpu-windows:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build vllm.dll (MSVC CPU)
+        shell: pwsh
+        env:
+          VLLM_CPP_FLAVOR: cpu
+        run: |
+          ./scripts/build-vllm.ps1
+          New-Item -ItemType Directory -Force -Path native-bundle | Out-Null
+          Copy-Item -Path "lib\windows-amd64\*" -Destination native-bundle -Force
+          if (-not (Test-Path "native-bundle\vllm.dll")) {
+            throw "vllm.dll missing from native-bundle"
+          }
+          Get-ChildItem native-bundle | Format-Table Name, Length
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-windows-amd64
+          path: native-bundle/
+
   resolve-version:
     runs-on: ubuntu-latest
     outputs:
@@ -115,7 +141,7 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
   publish:
-    needs: [build-cuda-linux-amd64, build-cpu, resolve-version]
+    needs: [build-cuda-linux-amd64, build-cpu, build-cpu-windows, resolve-version]
     permissions:
       contents: read
       packages: write

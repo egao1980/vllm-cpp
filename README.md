@@ -7,7 +7,7 @@ CFFI + native overlays for [`mudler/vllm.cpp`](https://github.com/mudler/vllm.cp
 | `linux/amd64` | **CUDA** (`-DVLLM_CPP_CUDA=ON`, archs `80;86;89;90a`) | `:cuda` |
 | `linux/arm64` | CPU | `:auto` |
 | `darwin/arm64` | Metal `AUTO` | `:auto` |
-| `windows/amd64` | CPU | `:auto` |
+| `windows/amd64` | CPU (MSVC 2022 `/MT`) | `:auto` |
 
 `arrange-native-artifacts` keys **os-arch only**, so the published linux/amd64 overlay **is** the CUDA build. CPU linux is local-only (`VLLM_CPP_FLAVOR=cpu` → `lib/linux-amd64-cpu/`). MLX is local-only (`VLLM_CPP_FLAVOR=mlx` → `lib/darwin-arm64-mlx/`). No second OCI platform, no `:release "cuda"`.
 
@@ -28,7 +28,7 @@ User-mode CUDA runtime (`libcudart` / `libcublas` / `libcublasLt`) is staged nex
 Chat is engine-side (`vllm_chat` — OpenAI `/v1/chat/completions` JSON in/out).
 llm-protocol lives in [`llm-protocol-vllm-cpp`](https://github.com/egao1980/llm-protocol-vllm-cpp).
 
-Build: `./scripts/build-vllm.sh` (`VLLM_CPP_FLAVOR=cuda|cpu|mlx`, `VLLM_CPP_REF`, `MLX_ROOT`, `VLLM_CPP_CUDA_ARCHITECTURES`). Linux default flavor is `cuda` and requires `nvcc`.
+Build: `./scripts/build-vllm.sh` (`VLLM_CPP_FLAVOR=cuda|cpu|mlx`, `VLLM_CPP_REF`, `MLX_ROOT`, `VLLM_CPP_CUDA_ARCHITECTURES`). Linux default flavor is `cuda` and requires `nvcc`. Windows: `pwsh -File scripts/build-vllm.ps1` (VS 2022 x64, static CRT, no CUDA — upstream Windows CUDA is still pending; if it ships it becomes this overlay).
 
 ## License
 
