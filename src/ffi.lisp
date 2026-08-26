@@ -128,6 +128,7 @@
 
 (defun %preload-cuda-runtime (dir)
   "Absolute-preload CUDA user-mode deps before libvllm. Never libcuda (driver)."
+  (declare (ignorable dir))
   #+(and unix (not darwin))
   (dolist (which '(:cudart :cublaslt :cublas))
     (let ((abs (%find-named dir (%cuda-runtime-names which))))
