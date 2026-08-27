@@ -7,7 +7,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-REF="${VLLM_CPP_REF:-master}"
+REF="${VLLM_CPP_REF:-main}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 SRC_URL="https://github.com/mudler/vllm.cpp.git"
 
@@ -69,7 +69,9 @@ if [[ -d "$SRC/.git" ]]; then
 else
   rm -rf "$SRC"
   git clone --depth 1 --branch "$REF" "$SRC_URL" "$SRC" \
-    || { git clone --depth 1 "$SRC_URL" "$SRC" && git -C "$SRC" checkout --force "$REF"; }
+    || { git clone --depth 1 "$SRC_URL" "$SRC"
+         git -C "$SRC" fetch --depth 1 origin "$REF"
+         git -C "$SRC" checkout --force FETCH_HEAD; }
 fi
 
 cmake_args=(
