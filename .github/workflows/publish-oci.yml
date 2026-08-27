@@ -201,7 +201,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: egao1980/cl-repository/.github/workflows/publish-native-package.yml@cursor/native-sbcl-heap-8a77
+    uses: egao1980/cl-repository/.github/workflows/publish-native-package.yml@main
     with:
       package-name: vllm-cpp
       version: ${{ needs.resolve-version.outputs.version }}
