@@ -9,7 +9,7 @@ CFFI + native overlays for [`mudler/vllm.cpp`](https://github.com/mudler/vllm.cp
 | `darwin/arm64` | Metal `AUTO` | `:auto` |
 | `windows/amd64` | CPU (MSVC 2022 `/MT`) | `:auto` |
 
-`arrange-native-artifacts` keys **os-arch only**, so the published linux/amd64 overlay **is** the CUDA build. CPU linux is local-only (`VLLM_CPP_FLAVOR=cpu` → `lib/linux-amd64-cpu/`). MLX is local-only (`VLLM_CPP_FLAVOR=mlx` → `lib/darwin-arm64-mlx/`). No second OCI platform, no `:release "cuda"`.
+`arrange-native-artifacts` keys **os-arch only**, so the published linux/amd64 overlay **is** the CUDA build. CPU on linux/amd64 is local-only (`VLLM_CPP_FLAVOR=cpu` → `lib/linux-amd64-cpu/`). linux/arm64 published overlay is CPU (`lib/linux-arm64/`). MLX is local-only (`VLLM_CPP_FLAVOR=mlx` → `lib/darwin-arm64-mlx/`). No second OCI platform, no `:release "cuda"`.
 
 User-mode CUDA runtime (`libcudart` / `libcublas` / `libcublasLt`) is staged next to `libvllm` with `RPATH=$ORIGIN`. The NVIDIA **driver** (`libcuda`) is never shipped — the host must provide it. No `LD_LIBRARY_PATH`.
 
