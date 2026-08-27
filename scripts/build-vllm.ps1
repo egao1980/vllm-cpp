@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$Ref = if ($env:VLLM_CPP_REF) { $env:VLLM_CPP_REF } else { "master" }
+$Ref = if ($env:VLLM_CPP_REF) { $env:VLLM_CPP_REF } else { "main" }
 $Jobs = if ($env:JOBS) { [int]$env:JOBS } else { [Environment]::ProcessorCount }
 $SrcUrl = "https://github.com/mudler/vllm.cpp.git"
 $Out = if ($env:DEST_DIR) { $env:DEST_DIR } else { Join-Path $Root "lib\windows-amd64" }
@@ -26,8 +26,10 @@ if (Test-Path (Join-Path $Src ".git")) {
     if ($LASTEXITCODE -ne 0) {
         git clone --depth 1 $SrcUrl $Src
         if ($LASTEXITCODE -ne 0) { throw "git clone failed: $LASTEXITCODE" }
-        git -C $Src checkout --force $Ref
-        if ($LASTEXITCODE -ne 0) { throw "git checkout $Ref failed: $LASTEXITCODE" }
+        git -C $Src fetch --depth 1 origin $Ref
+        if ($LASTEXITCODE -ne 0) { throw "git fetch $Ref failed: $LASTEXITCODE" }
+        git -C $Src checkout --force FETCH_HEAD
+        if ($LASTEXITCODE -ne 0) { throw "git checkout failed: $LASTEXITCODE" }
     }
 }
 
