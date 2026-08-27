@@ -201,13 +201,15 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: egao1980/cl-repository/.github/workflows/publish-native-package.yml@main
+    uses: egao1980/cl-repository/.github/workflows/publish-native-package.yml@cursor/native-sbcl-heap-8a77
     with:
       package-name: vllm-cpp
       version: ${{ needs.resolve-version.outputs.version }}
       registry: ${{ inputs.registry || 'ghcr.io' }}
       # 0.16.0 ql:quickload dies on http-protocol. Working natives pin 0.10.0.
       packager-tag: "0.10.0"
+      # CUDA linux/amd64 overlay OOMs apt SBCL's ~1GB heap in salza2 gzip.
+      sbcl-dynamic-space-mb: 12288
       source-paths: |
         vllm-cpp.asd
         src
