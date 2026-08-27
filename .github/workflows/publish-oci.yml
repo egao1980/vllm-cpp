@@ -1,0 +1,161 @@
+# linux/amd64 overlay IS the CUDA build (packager keys os-arch only).
+# Compile in nvidia/cuda devel — no GPU required. Runtime needs a driver.
+name: Publish OCI Package
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "OCI tag (empty → .asd :version)"
+        required: false
+        default: ""
+      registry:
+        description: "OCI registry"
+        required: false
+        default: "ghcr.io"
+
+env:
+  PACKAGE_VERSION_DEFAULT: "0.1.0"
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  build-cuda-linux-amd64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu24.04
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build deps
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential cmake git ninja-build patchelf ca-certificates curl
+      - name: Build libvllm (CUDA)
+        env:
+          VLLM_CPP_FLAVOR: cuda
+          VLLM_CPP_CUDA_ARCHITECTURES: "80;86;89;90a"
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          chmod +x scripts/build-vllm.sh scripts/stage-cuda-runtime.sh
+          ./scripts/build-vllm.sh
+          mkdir -p native-bundle
+          cp -a lib/linux-amd64/. native-bundle/
+          test -e native-bundle/libvllm.so
+          test -e native-bundle/libcudart.so.12
+          test -e native-bundle/libcublasLt.so.12
+          test -e native-bundle/libcublas.so.12
+          if ls native-bundle/libcuda.so* >/dev/null 2>&1; then
+            echo "refusing to publish libcuda (driver)" >&2
+            exit 1
+          fi
+          ls -la native-bundle
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-linux-amd64
+          path: native-bundle/
+
+  build-cpu:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build deps (Linux)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git curl ninja-build
+      - name: Install build deps (macOS)
+        if: matrix.os == 'darwin'
+        run: brew install cmake ninja || true
+      - name: Build libvllm (CPU / Metal)
+        env:
+          VLLM_CPP_FLAVOR: cpu
+        run: |
+          chmod +x scripts/build-vllm.sh
+          ./scripts/build-vllm.sh
+          mkdir -p native-bundle
+          cp -a "lib/${{ matrix.os }}-${{ matrix.arch }}/." native-bundle/
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-${{ matrix.os }}-${{ matrix.arch }}
+          path: native-bundle/
+
+  # CPU / MSVC /MT. CUDA Windows is not an upstream release target.
+  build-cpu-windows:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build vllm.dll (MSVC CPU)
+        shell: pwsh
+        env:
+          VLLM_CPP_FLAVOR: cpu
+        run: |
+          ./scripts/build-vllm.ps1
+          New-Item -ItemType Directory -Force -Path native-bundle | Out-Null
+          Copy-Item -Path "lib\windows-amd64\*" -Destination native-bundle -Force
+          if (-not (Test-Path "native-bundle\vllm.dll")) {
+            throw "vllm.dll missing from native-bundle"
+          }
+          Get-ChildItem native-bundle | Format-Table Name, Length
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-windows-amd64
+          path: native-bundle/
+
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - id: ver
+        shell: bash
+        run: |
+          V="${{ inputs.version }}"
+          if [ -z "$V" ] && [[ "${GITHUB_REF_NAME}" == v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          fi
+          [ -z "$V" ] && V="${PACKAGE_VERSION_DEFAULT}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: [build-cuda-linux-amd64, build-cpu, build-cpu-windows, resolve-version]
+    permissions:
+      contents: read
+      packages: write
+    uses: egao1980/cl-repository/.github/workflows/publish-native-package.yml@main
+    with:
+      package-name: vllm-cpp
+      version: ${{ needs.resolve-version.outputs.version }}
+      registry: ${{ inputs.registry || 'ghcr.io' }}
+      packager-tag: "0.16.0"
+      source-paths: |
+        vllm-cpp.asd
+        src
+        include
+        LICENSE
+        NOTICE
+        README.md
+    secrets: inherit
