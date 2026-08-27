@@ -51,7 +51,9 @@ esac
 
 # Published overlay path is lib/<os>-<arch>/. Extra local flavors get a suffix
 # so they cannot clobber the OCI layout (arrange-native-artifacts is os-arch only).
-if [[ "$FLAVOR" == "cpu" && "$os" == "linux" ]]; then
+# linux/amd64 published overlay is CUDA — CPU on that pair is local-only.
+# linux/arm64 published overlay IS CPU — do not suffix it.
+if [[ "$FLAVOR" == "cpu" && "$os" == "linux" && "$arch" == "amd64" ]]; then
   suffix="-cpu"
 elif [[ "$FLAVOR" == "mlx" ]]; then
   suffix="-mlx"

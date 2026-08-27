@@ -15,6 +15,10 @@ on:
         description: "OCI registry"
         required: false
         default: "ghcr.io"
+      reuse_cuda_run:
+        description: "Reuse native-linux-amd64 from this run id (skip CUDA compile)"
+        required: false
+        default: ""
 
 env:
   PACKAGE_VERSION_DEFAULT: "0.1.1"
@@ -23,6 +27,7 @@ env:
 
 jobs:
   build-cuda-linux-amd64:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.reuse_cuda_run == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     container:
@@ -47,6 +52,38 @@ jobs:
           ./scripts/build-vllm.sh
           mkdir -p native-bundle
           cp -a lib/linux-amd64/. native-bundle/
+          test -e native-bundle/libvllm.so
+          test -e native-bundle/libcudart.so.12
+          test -e native-bundle/libcublasLt.so.12
+          test -e native-bundle/libcublas.so.12
+          if ls native-bundle/libcuda.so* >/dev/null 2>&1; then
+            echo "refusing to publish libcuda (driver)" >&2
+            exit 1
+          fi
+          ls -la native-bundle
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-linux-amd64
+          path: native-bundle/
+
+  # Same-repo artifact reuse so a failed CPU matrix does not force another
+  # multi-hour CUDA compile. Token needs actions:read on this repo.
+  reuse-cuda-linux-amd64:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.reuse_cuda_run != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: native-linux-amd64
+          run-id: ${{ inputs.reuse_cuda_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          path: native-bundle
+      - name: Verify CUDA overlay
+        run: |
           test -e native-bundle/libvllm.so
           test -e native-bundle/libcudart.so.12
           test -e native-bundle/libcublasLt.so.12
@@ -94,7 +131,18 @@ jobs:
           chmod +x scripts/build-vllm.sh
           ./scripts/build-vllm.sh
           mkdir -p native-bundle
-          cp -a "lib/${{ matrix.os }}-${{ matrix.arch }}/." native-bundle/
+          src="lib/${{ matrix.os }}-${{ matrix.arch }}"
+          if [ ! -d "$src" ]; then
+            echo "missing $src (build script staged elsewhere)" >&2
+            find lib -type d -print >&2 || true
+            exit 1
+          fi
+          cp -a "$src/." native-bundle/
+          if [ "${{ matrix.os }}" = "darwin" ]; then
+            test -n "$(ls native-bundle/libvllm*.dylib 2>/dev/null)"
+          else
+            test -e native-bundle/libvllm.so
+          fi
       - uses: actions/upload-artifact@v6
         with:
           name: native-${{ matrix.os }}-${{ matrix.arch }}
@@ -142,7 +190,14 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
   publish:
-    needs: [build-cuda-linux-amd64, build-cpu, build-cpu-windows, resolve-version]
+    needs: [build-cuda-linux-amd64, reuse-cuda-linux-amd64, build-cpu, build-cpu-windows, resolve-version]
+    if: |
+      always() &&
+      !cancelled() &&
+      needs.build-cpu.result == 'success' &&
+      needs.build-cpu-windows.result == 'success' &&
+      needs.resolve-version.result == 'success' &&
+      (needs.build-cuda-linux-amd64.result == 'success' || needs.reuse-cuda-linux-amd64.result == 'success')
     permissions:
       contents: read
       packages: write
