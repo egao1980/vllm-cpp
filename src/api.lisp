@@ -289,6 +289,51 @@
           (unless (or (null ptr) (null-pointer-p ptr))
             (%string-free ptr)))))))
 
+(defun embed (engine texts)
+  "Blocking embed. TEXTS is a string or sequence of strings.
+   → (values list-of-single-float-vectors dim prompt-tokens)."
+  (let* ((e (ensure-engine engine))
+         (list (cond
+                 ((stringp texts) (list texts))
+                 ((or (listp texts) (vectorp texts))
+                  (map 'list (lambda (x)
+                               (if (stringp x) x (princ-to-string x)))
+                       texts))
+                 (t (list (princ-to-string texts)))))
+         (n (length list)))
+    (when (zerop n)
+      (error 'vllm-error :message "embed requires at least one text"))
+    (with-foreign-objects ((arr :pointer n)
+                           (out '(:struct vllm-embedding-result)))
+      (dotimes (i (foreign-type-size '(:struct vllm-embedding-result)))
+        (setf (mem-aref out :uint8 i) 0))
+      (let ((owned '()))
+        (unwind-protect
+             (progn
+               (loop for s in list for i from 0
+                     for p = (foreign-string-alloc s)
+                     do (push p owned)
+                        (setf (mem-aref arr :pointer i) p))
+               (%check (%embed (engine-pointer e) arr n out) "vllm_embed")
+               (let* ((vals (foreign-slot-value out '(:struct vllm-embedding-result)
+                                                'values))
+                      (n-emb (foreign-slot-value out '(:struct vllm-embedding-result)
+                                                 'n-embeddings))
+                      (dim (foreign-slot-value out '(:struct vllm-embedding-result)
+                                               'dim))
+                      (tokens (foreign-slot-value out '(:struct vllm-embedding-result)
+                                                  'prompt-tokens))
+                      (vecs (loop for i from 0 below n-emb
+                                  collect
+                                  (let ((v (make-array dim :element-type 'single-float)))
+                                    (dotimes (j dim)
+                                      (setf (aref v j)
+                                            (mem-aref vals :float (+ (* i dim) j))))
+                                    v))))
+                 (values vecs dim tokens)))
+          (ignore-errors (%embedding-result-free out))
+          (mapc #'foreign-string-free owned))))))
+
 (defun chat-stream (engine request-json on-delta)
   "Blocking streaming chat. ON-DELTA gets each OpenAI chunk JSON (or \"\" on finish)."
   (check-type request-json string)

@@ -63,6 +63,12 @@
   (prompt-tokens :int32)
   (completion-tokens :int32))
 
+(defcstruct vllm-embedding-result
+  (values :pointer)
+  (n-embeddings :int32)
+  (dim :int32)
+  (prompt-tokens :int32))
+
 (define-foreign-library libvllm
   (:darwin (:or "libvllm.dylib" "libvllm.0.dylib"))
   (:unix (:or "libvllm.so" "libvllm.so.0"))
@@ -209,6 +215,15 @@
 
 (defcfun ("vllm_completion_free" %completion-free) :void
   (out (:pointer (:struct vllm-completion))))
+
+(defcfun ("vllm_embed" %embed) vllm-status
+  (engine :pointer)
+  (texts :pointer)
+  (n-texts :int32)
+  (out (:pointer (:struct vllm-embedding-result))))
+
+(defcfun ("vllm_embedding_result_free" %embedding-result-free) :void
+  (out (:pointer (:struct vllm-embedding-result))))
 
 (defcfun ("vllm_last_error" %last-error) :string)
 

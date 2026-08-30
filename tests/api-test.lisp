@@ -51,6 +51,32 @@
                    'vllm-cpp:vllm-missing-model))
       (skip "libvllm not present")))
 
+(deftest embed-rejects-non-engine
+  (ok (signals (vllm-cpp:embed "not-an-engine" "hi")
+               'vllm-cpp:vllm-error)))
+
+(deftest live-embed
+  (let ((path (or (uiop:getenv "VLLM_EMBED_MODEL_PATH")
+                  (uiop:getenv "VLLM_MODEL_PATH"))))
+    (cond
+      ((not (vllm-cpp:vllm-available-p))
+       (skip "libvllm not present"))
+      ((or (null path) (zerop (length path)))
+       (skip "set VLLM_EMBED_MODEL_PATH for a live embed"))
+      (t
+       (let ((e (vllm-cpp:load-engine :model-path path)))
+         (unwind-protect
+              (handler-case
+                  (multiple-value-bind (vecs dim tokens)
+                      (vllm-cpp:embed e "hello")
+                    (ok (consp vecs))
+                    (ok (plusp dim))
+                    (ok (= dim (length (first vecs))))
+                    (ok (integerp tokens)))
+                (vllm-cpp:vllm-error (err)
+                  (skip (format nil "not a pooling checkpoint: ~a" err))))
+           (vllm-cpp:free-engine e)))))))
+
 (deftest live-complete
   (let ((path (uiop:getenv "VLLM_MODEL_PATH")))
     (cond
