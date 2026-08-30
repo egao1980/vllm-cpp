@@ -21,7 +21,7 @@ on:
         default: ""
 
 env:
-  PACKAGE_VERSION_DEFAULT: "0.1.1"
+  PACKAGE_VERSION_DEFAULT: "0.1.2"
   VLLM_CPP_REF: main
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
