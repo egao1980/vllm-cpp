@@ -32,6 +32,7 @@
            #:complete
            #:complete-stream
            #:chat
-           #:chat-stream))
+           #:chat-stream
+           #:embed))
 
 (in-package #:vllm-cpp)

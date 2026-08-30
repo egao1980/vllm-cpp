@@ -26,7 +26,8 @@ User-mode CUDA runtime (`libcudart` / `libcublas` / `libcublasLt`) is staged nex
 ```
 
 Chat is engine-side (`vllm_chat` — OpenAI `/v1/chat/completions` JSON in/out).
-llm-protocol lives in [`llm-protocol-vllm-cpp`](https://github.com/egao1980/llm-protocol-vllm-cpp).
+`vllm-cpp:embed` is the pooling/`vllm_embed` entry (text engines refuse).
+llm-protocol lives in [`llm-backend-vllm-cpp`](https://github.com/egao1980/llm-backend-vllm-cpp).
 
 Build: `./scripts/build-vllm.sh` (`VLLM_CPP_FLAVOR=cuda|cpu|mlx`, `VLLM_CPP_REF`, `MLX_ROOT`, `VLLM_CPP_CUDA_ARCHITECTURES`). Linux default flavor is `cuda` and requires `nvcc`. Windows: `pwsh -File scripts/build-vllm.ps1` (VS 2022 x64, static CRT, no CUDA — upstream Windows CUDA is still pending; if it ships it becomes this overlay).
 
