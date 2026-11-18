@@ -1,7 +1,7 @@
 (in-package #:vllm-cpp)
 
-;;; Layout matches include/vllm.h ABI v23 (LP64 / Windows x64).
-(defconstant +vllm-abi-version+ 23)
+;;; Layout matches include/vllm.h ABI v30 (LP64 / Windows x64).
+(defconstant +vllm-abi-version+ 30)
 
 (defcenum vllm-status
   (:ok 0)
@@ -11,6 +11,7 @@
   (:unknown 4))
 
 (defcstruct vllm-model-params
+  ;; Field order and types follow include/vllm.h (VLLM_ABI_VERSION 30).
   (model-path :pointer)
   (tokenizer-config-path :pointer)
   (block-size :int32)
@@ -26,12 +27,14 @@
   (kv-transfer-config :pointer)
   (offload-config :pointer)
   (enable-jump-forward :int32)
+  (disable-sliding-window :int32)
   (device :int32)
   (gpu-memory-utilization :double)
   (kv-cache-memory-bytes :int64)
   (language-model-only :int32)
   (limit-mm-per-prompt :pointer)
-  (mmproj-path :pointer))
+  (mmproj-path :pointer)
+  (kv-cache-dtype :pointer))
 
 (defcstruct vllm-sampling-params
   (temperature :float)

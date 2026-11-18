@@ -1,6 +1,6 @@
 # vllm-cpp
 
-CFFI + native overlays for [`mudler/vllm.cpp`](https://github.com/mudler/vllm.cpp) (`libvllm`, C ABI `VLLM_ABI_VERSION` 23). Not the LLM protocol.
+CFFI + native overlays for [`mudler/vllm.cpp`](https://github.com/mudler/vllm.cpp) (`libvllm`, C ABI `VLLM_ABI_VERSION` 30, upstream pinned at 2a2059c). Not the LLM protocol.
 
 | Overlay | Build | Default device |
 |---------|-------|----------------|

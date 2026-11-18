@@ -1,0 +1,5 @@
+;;; cl-repo.lock -- auto-generated, do not edit
+((:system "asdf-native" :version "0.3.1" :index-digest
+  "sha256:4d19740d33fdd005b604ff79010dca932dbd6ede7da00cff9a196538af74ba5e"
+  :registry "https://ghcr.io" :source-digest
+  "sha256:9e187e0dbfe013750cdfa36f31afab0de81bd82b1051f4faf7e620ce42dbbfbd"))
