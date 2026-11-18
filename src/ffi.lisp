@@ -91,7 +91,9 @@
   "Load libvllm (and, on linux/amd64, its CUDA runtime). Idempotent.
 ASDF load already ran the :native-library components (vllm-cpp.asd); this
 retries the missing ones, e.g. when VLLM_CPP_NATIVE was set after load, and
-signals VLLM-NOT-LOADED while libvllm is still absent."
+signals VLLM-NOT-LOADED while libvllm is still absent. A library built for
+another C ABI than +VLLM-ABI-VERSION+ signals VLLM-ABI-MISMATCH, with a
+CONTINUE restart that uses it anyway."
   (unless *vllm-loaded*
     (dolist (c (asdf:component-children (asdf:find-system "vllm-cpp")))
       (when (typep c 'asdf-native:native-library)
@@ -100,17 +102,17 @@ signals VLLM-NOT-LOADED while libvllm is still absent."
     (unless (asdf-native:library-loaded-path "vllm-cpp" "vllm")
       (error 'vllm-not-loaded
              :message "libvllm not found (VLLM_CPP_NATIVE, native/, lib/<os>-<arch>/)"))
-    (setf *vllm-loaded* t)
-    (let ((abi (ignore-errors (%vllm-abi-version))))
-      (when (and abi (/= abi +vllm-abi-version+))
-        (warn "libvllm ABI ~a != pinned header ~a" abi +vllm-abi-version+))))
+    (let ((abi (%vllm-abi-version)))
+      (unless (= abi +vllm-abi-version+)
+        (cerror "Use this libvllm anyway." 'vllm-abi-mismatch
+                :library-abi abi :header-abi +vllm-abi-version+)))
+    (setf *vllm-loaded* t))
   t)
 
 (defun vllm-available-p ()
   (or *vllm-loaded*
       (handler-case (progn (load-vllm) t)
-        (vllm-not-loaded () nil)
-        (error () nil))))
+        (vllm-error () nil))))
 
 (defun ensure-vllm ()
   (or *vllm-loaded* (load-vllm)))

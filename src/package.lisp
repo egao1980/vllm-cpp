@@ -8,6 +8,9 @@
            #:vllm-error-message
            #:vllm-not-loaded
            #:vllm-missing-model
+           #:vllm-abi-mismatch
+           #:vllm-abi-mismatch-library-abi
+           #:vllm-abi-mismatch-header-abi
 
            #:load-vllm
            #:vllm-available-p

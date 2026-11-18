@@ -1,5 +1,5 @@
 (defsystem "vllm-cpp"
-  :version "0.2.0"
+  :version "0.2.1"
   :description "CFFI + native overlays for mudler/vllm.cpp (libvllm; linux/amd64 is CUDA)"
   :author "egao1980"
   :license "MIT"
