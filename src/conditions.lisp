@@ -15,3 +15,16 @@
 (define-condition vllm-missing-model (vllm-error) ()
   (:report (lambda (c s)
              (format s "vllm model path missing~@[: ~a~]" (vllm-error-message c)))))
+
+(define-condition vllm-abi-mismatch (vllm-error)
+  ((library-abi :initarg :library-abi :reader vllm-abi-mismatch-library-abi)
+   (header-abi :initarg :header-abi :reader vllm-abi-mismatch-header-abi))
+  (:report (lambda (c s)
+             ;; One line per FORMAT: a ~<newline> continuation breaks on a
+             ;; CRLF checkout (Windows), where ~ meets a Return.
+             (format s "libvllm ABI ~a does not match the bindings' header ABI ~a: "
+                     (vllm-abi-mismatch-library-abi c)
+                     (vllm-abi-mismatch-header-abi c))
+             (format s "struct layouts differ, so calls would pass garbled arguments. ")
+             (format s "Install the vllm-cpp release built for ABI ~a."
+                     (vllm-abi-mismatch-header-abi c)))))
