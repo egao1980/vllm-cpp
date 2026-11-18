@@ -9,7 +9,6 @@
            #:vllm-not-loaded
            #:vllm-missing-model
 
-           #:libvllm
            #:load-vllm
            #:vllm-available-p
            #:vllm-version

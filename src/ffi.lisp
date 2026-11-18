@@ -69,12 +69,6 @@
   (dim :int32)
   (prompt-tokens :int32))
 
-(define-foreign-library libvllm
-  (:darwin (:or "libvllm.dylib" "libvllm.0.dylib"))
-  (:unix (:or "libvllm.so" "libvllm.so.0"))
-  (:windows (:or "vllm.dll" "libvllm.dll"))
-  (t (:default "libvllm")))
-
 (defun %host-os ()
   #+windows "windows"
   #+darwin "darwin"
@@ -91,79 +85,21 @@
     (when (and v (plusp (length v)))
       (string-downcase v))))
 
-(defun %native-search-dirs ()
-  "Overlay native/, lib/<os>-<arch>[-flavor]/. No LD_LIBRARY_PATH."
-  (let ((dirs '())
-        (flavor (%flavor)))
-    (dolist (var '("VLLM_CPP_NATIVE" "LLM_PROTOCOL_VLLM_NATIVE"))
-      (let ((v (uiop:getenv var)))
-        (when (and v (plusp (length v)))
-          (push v dirs))))
-    (ignore-errors
-      (let* ((sys (asdf:find-system :vllm-cpp nil))
-             (root (when sys (asdf:system-source-directory sys))))
-        (when root
-          (push (namestring (merge-pathnames "native/" root)) dirs)
-          (let ((base (format nil "lib/~A-~A" (%host-os) (%host-arch))))
-            (when flavor
-              (push (namestring (merge-pathnames (format nil "~A-~A/" base flavor) root))
-                    dirs))
-            (push (namestring (merge-pathnames (format nil "~A/" base) root)) dirs)))))
-    (nreverse dirs)))
-
-(defun %lib-candidates ()
-  #+windows '("vllm.dll" "libvllm.dll")
-  #+darwin '("libvllm.dylib" "libvllm.0.dylib")
-  #+(and unix (not darwin)) '("libvllm.so" "libvllm.so.0")
-  #-(or windows darwin unix) '("libvllm.so"))
-
-(defun %find-named (dir names)
-  (dolist (name names)
-    (let ((p (merge-pathnames name (uiop:ensure-directory-pathname dir))))
-      (when (probe-file p)
-        (return (namestring (truename p)))))))
-
-(defun %find-lib (dir)
-  (%find-named dir (%lib-candidates)))
-
-(defun %cuda-runtime-names (which)
-  (ecase which
-    (:cudart '("libcudart.so.12" "libcudart.so.13" "libcudart.so"))
-    (:cublaslt '("libcublasLt.so.12" "libcublasLt.so.13" "libcublasLt.so"))
-    (:cublas '("libcublas.so.12" "libcublas.so.13" "libcublas.so"))))
-
-(defun %preload-cuda-runtime (dir)
-  "Absolute-preload CUDA user-mode deps before libvllm. Never libcuda (driver)."
-  (declare (ignorable dir))
-  #+(and unix (not darwin))
-  (dolist (which '(:cudart :cublaslt :cublas))
-    (let ((abs (%find-named dir (%cuda-runtime-names which))))
-      (when abs
-        (handler-case (load-foreign-library abs)
-          (error (e)
-            (warn "vllm-cpp: failed to preload ~a (~a)" abs e))))))
-  t)
-
 (defvar *vllm-loaded* nil)
 
 (defun load-vllm ()
-  "Load libvllm. Idempotent. Signals VLLM-NOT-LOADED if nothing is found."
+  "Load libvllm (and, on linux/amd64, its CUDA runtime). Idempotent.
+ASDF load already ran the :native-library components (vllm-cpp.asd); this
+retries the missing ones, e.g. when VLLM_CPP_NATIVE was set after load, and
+signals VLLM-NOT-LOADED while libvllm is still absent."
   (unless *vllm-loaded*
-    (let ((preloaded nil))
-      (dolist (dir (%native-search-dirs))
-        (when (and dir (uiop:directory-exists-p dir))
-          (pushnew dir cffi:*foreign-library-directories* :test #'equal)
-          (unless preloaded
-            (let ((abs (%find-lib dir)))
-              (when abs
-                (%preload-cuda-runtime dir)
-                (load-foreign-library abs)
-                (setf preloaded t))))))
-      (unless preloaded
-        (handler-case (load-foreign-library 'libvllm)
-          (error (e)
-            (error 'vllm-not-loaded
-                   :message (princ-to-string e))))))
+    (dolist (c (asdf:component-children (asdf:find-system "vllm-cpp")))
+      (when (typep c 'asdf-native:native-library)
+        (handler-bind ((asdf-native:native-library-missing #'muffle-warning))
+          (asdf-native:load-native-library c))))
+    (unless (asdf-native:library-loaded-path "vllm-cpp" "vllm")
+      (error 'vllm-not-loaded
+             :message "libvllm not found (VLLM_CPP_NATIVE, native/, lib/<os>-<arch>/)"))
     (setf *vllm-loaded* t)
     (let ((abi (ignore-errors (%vllm-abi-version))))
       (when (and abi (/= abi +vllm-abi-version+))
