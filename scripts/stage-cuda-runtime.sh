@@ -41,19 +41,10 @@ copy_dep() {
   if [[ -e "$dest" ]]; then
     return 0
   fi
-  cp -a "$src" "$dest"
-  # Follow a single symlink hop so both SONAME and real file land in DEST.
-  if [[ -L "$src" ]]; then
-    local real
-    real="$(readlink -f "$src" || true)"
-    if [[ -n "$real" && -e "$real" ]]; then
-      local rbase
-      rbase="$(basename "$real")"
-      if [[ "$rbase" != "$base" && ! -e "$DEST/$rbase" ]]; then
-        cp -a "$real" "$DEST/$rbase"
-      fi
-    fi
-  fi
+  # A regular file under the SONAME only: DT_NEEDED and asdf-native use it, and
+  # a second copy under the full version (libcublasLt.so.12.8.4.1, 717 MB)
+  # doubles the overlay derived from lib/<os>-<arch>/.
+  cp -L "$src" "$dest"
 }
 
 for lib in "${vllms[@]}"; do
