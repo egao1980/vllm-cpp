@@ -1,7 +1,16 @@
 (in-package #:vllm-cpp/tests)
 
 (deftest abi-pin
-  (ok (= 23 vllm-cpp:+vllm-abi-version+)))
+  ;; The Lisp structs and the vendored header must describe the same ABI.
+  (let* ((header (asdf:system-relative-pathname "vllm-cpp" "include/vllm.h"))
+         (line (with-open-file (in header)
+                 (loop for l = (read-line in nil)
+                       while l
+                       when (search "#define VLLM_ABI_VERSION " l) return l)))
+         (header-abi (and line (parse-integer line :start (+ (search "VERSION " line) 8)
+                                                   :junk-allowed t))))
+    (ok (eql header-abi vllm-cpp:+vllm-abi-version+) "constant matches include/vllm.h")
+    (ok (= 30 vllm-cpp:+vllm-abi-version+) "upstream pinned at 2a2059c is ABI 30")))
 
 (deftest device-codes
   (dolist (pair '((:auto 0) (:cpu 1) (:cuda 2) ("cuda" 2)))
