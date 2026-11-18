@@ -3,7 +3,7 @@
   :description "CFFI + native overlays for mudler/vllm.cpp (libvllm; linux/amd64 is CUDA)"
   :author "egao1980"
   :license "MIT"
-  :defsystem-depends-on ("asdf-native")
+  :defsystem-depends-on ((:version "asdf-native" "0.3.1"))
   :depends-on ("cffi" "trivial-garbage")
   :serial t
   :pathname "src"
