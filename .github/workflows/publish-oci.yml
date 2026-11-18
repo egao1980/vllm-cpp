@@ -21,7 +21,8 @@ on:
         default: ""
 
 env:
-  VLLM_CPP_REF: main
+  # Upstream mudler/vllm.cpp commit; bump deliberately (main broke the MSVC and NEON builds on 2026-11-18).
+  VLLM_CPP_REF: 2a2059cedc0376468f29316dcc620b598f37e2a0
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
